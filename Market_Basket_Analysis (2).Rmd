@@ -1,0 +1,164 @@
+---
+title: 'Market Basket Analysis'
+author: "Ashley Fidler"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Market Basket Analysis
+
+```{r}
+library("arules")
+library("arulesViz")
+library("tidyverse")
+library("readxl")
+library("knitr")
+library("lubridate")
+library("plyr")
+```
+
+```{r}
+#Pre-Processing
+
+retail <- read_excel("Online Retail (1).xlsx")          #loading in the data
+
+retail <- retail[complete.cases(retail), ]          #filtering for only complete rows
+
+retail %>% mutate(Description = as.factor(Description))     #Description data becomes a factor
+
+retail %>% mutate(Country = as.factor(Country))             #Country data becomes as factor
+
+retail$Date <- as.Date(retail$InvoiceDate)          #Character data becomes a date in a new variable 
+
+TransTime <- format(retail$InvoiceDate, "%H:%M:%S")         #Separates time as a new variable
+
+InvoiceNo <- as.numeric(as.character(retail$InvoiceNo))     #InvoiceNo data becomes numeric 
+
+cbind(retail, TransTime)                            #Binds TransTime column into retail dataframe
+
+cbind(retail, InvoiceNo)                            #Binds InvoiceNo column into retail dataframe
+
+glimpse(retail)
+```
+
+```{r}
+#Converting Data to Transaction Data 
+
+transactionData <- ddply(retail, c("InvoiceNo", "Date"),
+                         function(df1)paste(df1$Description, collapse = ","))           #Combines all info from an invoice number into 1 row 
+
+transactionData$InvoiceNo <- NULL               #InvoiceNo will not be of use 
+
+transactionData$Date <- NULL                    #Date will not be of use
+
+colnames(transactionData) <- c("items")         #Rename column to items 
+
+transactionData
+
+write.csv(transactionData, "market_basket_transactions.csv", quote = FALSE, row.names = FALSE)
+```
+
+```{r}
+#Transaction data loads into transaction class 
+
+tr <- read.transactions("market_basket_transactions.csv", format = "basket", sep = ",")
+
+tr
+
+summary(tr)
+```
+There are 68 transactions (rows) and 546 items (columns) -- 546 is the product descriptions involved in the dataset, and 68 transactions are collections of these items.
+
+Density is the percentage of non-zero cells in a sparse matrix (a sparse matrix is a matrix where most of the elements are zero). You can say it as the total number of items that are purchased divided by a possible number of items in that matrix
+Density  = 68 * 546 * .02265137
+Density = 841.000065
+
+Element length distribution tells you how many transactions there are for 1-itemset, 2-itemset, 3-itemset, etc. The first row if the number of items and the second row is the number of transactions.
+
+```{r}
+#Item Frequency Plot 
+
+if (!require("RColorBrewer")) {
+    install.packages("RColorBrewer")
+    library(RColorBrewer)
+}
+itemFrequencyPlot(tr, topN = 20, type = "absolute", col = brewer.pal(8, "Pastel2"), main = "Absolute Item Frequency Plot")      #type = "absolute" shows numeric frequencies of each item independently
+
+itemFrequencyPlot(tr, topN = 20, type = "relative", col = brewer.pal(8, "Pastel2"), main = "Absolute Item Frequency Plot")      #type = "relative" shows how many times these items appear when compared to others
+```
+
+```{r}
+#Generating Rules with APRIORI Algorithm
+
+association.rules <- apriori(tr, parameter = list(supp = .05, conf = .8, maxlen = 10))         #confidence is .8, min support is .001 
+
+summary(association.rules)
+```
+
+Parameter Specification: min_sup = .001 and min_confidence = .8 values with 3 items as max of items in a rule
+
+Total number of rules: the set of 525376 rules
+
+Distribution of Rule Length: a length of 3 items has the most rules (at 496798). a length of 2 items has the lowest number of rules (at 13623)
+
+Summary of quality measures: min and max values for support, confidence, and lift 
+
+Information used for creating rules: the data, support, and confidence we provided to the algorithm 
+
+```{r}
+#Looking at the top 10 rules 
+
+inspect(head(sort(association.rules, by = "confidence"), 10))
+```
+
+
+```{r}
+#Limiting number and size of rules 
+
+shorter.association.rules <- apriori(tr, parameter = list(supp = .05, conf = .9, maxlen = 3))
+
+summary(shorter.association.rules)
+
+inspect(head(sort(shorter.association.rules, by = "confidence"), 10))
+```
+
+Parameter Specification: min_sup = .001 and min_confidence = .9 values with 3 items as max of items in a rule
+
+Total number of rules: the set of 510155 rules
+
+Distribution of Rule Length: a length of 3 items has the most rules (at 496599). a length of 2 items has the lowest number of rules (at 13556)
+
+
+```{r}
+#Finding rules related to given items 
+
+aged.association.rules <- apriori(tr, parameter = list(supp = .001, conf = 0.8, maxlen = 3), appearance = list(default = "lhs", rhs = "HAND WARMER UNION JACK"))    #what do customers buy before buying "HAND WARMER UNION JACK"
+
+inspect(head(sort(aged.association.rules, by = "confidence"), 5))
+```
+
+```{r}
+#Customers who bought HAND WARMER UNION JACK also bought...
+
+aged.association.rules <- apriori(tr, parameter = list(supp = .001, conf = 0.1, maxlen = 3), appearance = list(lhs = "HAND WARMER UNION JACK", default = "rhs"))     #keep HAND WARMER UNION JACK on lhs
+
+inspect(head(sort(aged.association.rules, by = "confidence"), 5))
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
